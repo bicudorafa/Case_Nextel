@@ -1,0 +1,329 @@
+---
+title: "House Price Prediction"
+author: "Rafael Bicudo Rosa"
+date: "2018/09/28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+```
+
+## Business Case
+
+The goal of this project is to investigate the features involved in the determination of the houses' prices and develop the best price modeling algorithm.
+
+## Stage 1 - Loading the Data
+
+We start our approach by looking at our data, its characteristics and other primary informations.
+
+```{r initialization}
+# Carrehando pacote necessario
+library(dplyr)
+
+# Abertura do df
+houses <- read.csv('house_sales.csv')
+
+## Basicas
+summary(houses)
+sapply(houses, function(x) length(unique(x)))
+glimpse(houses)
+
+```
+
+
+The data looks like a bunch of features relationated to our main goal, very clean and without missing data, so it's okay to proceed to our next step in the analysis.
+
+
+## Stage 2 - Exploratory Data Analysis
+
+
+The first thing to look is the geographic distribution of our data. To get this, I'll use the an interactive plot from the package 'leaflet'. It´s possible to see that the data is very close to each other.
+
+
+```{r EDA 1}
+## Visualizacao interativa
+library(leaflet)
+
+leaflet(data = houses) %>% addTiles() %>% 
+  addMarkers(~longitude, ~latitude, popup = ~as.character(price), 
+             clusterOptions = markerClusterOptions()
+  )
+```
+
+
+Right next, we'll look through out the joint distribution of our numeric data in relation to the target, and the barplots of the categoricals. As we can se bellow, most part of our data is correlated in some way to our target, but with some interesting outliers (like 'num_bed' where we have a house with 33). In a deeper analysis, would worth to investigate better the origin of the data to understand these outliers.
+
+
+```{r EDA 2}
+# Pacote
+library(ggplot2)
+
+# visualizacao das variaveis continuas
+target <- 'price'
+categorical <- c('num_bed', 'num_bath', 'num_floors', 'is_waterfront', 'condition', 'renovation_date')
+numeric <- setdiff(names(houses), c(target, categorical))
+
+plots_num <- list()
+for (var in numeric) {
+  plots_num[[var]] <- ggplot(houses, aes_string(houses[[var]], houses[['price']])) + 
+    geom_point() +
+    geom_smooth(se = F) + 
+    ggtitle(paste(var, 'x price')) +
+    theme_minimal()
+  print(plots_num[[var]])
+}
+plots_num = list()
+# features que mereceriam clusterização ou pca: year_built, (lat x long), zip. Demais possuem relações n lineares
+
+# visualizacao das variaveis categoricas
+
+plots_cat <- list()
+for (var in categorical) {
+  plots_cat[[var]] <- ggplot(houses, aes_string(x = as.factor(houses[[var]]))) + 
+    geom_bar(stat = 'count') +
+    ggtitle(paste('Total Observations in ',var)) +
+    theme_minimal()
+  print(plots_cat[[var]])
+}
+plots_cat = list()
+```
+
+
+
+## Stage 3 - Baseline Model
+
+
+Before we make any transformation in our data, I will proceed to baseline models to use as benchmark of our work using 2 algorithm: a lm and a xgboost. The First is the most basic for regression problemns and the second was choose for being one of the most sofisticated of the atuality. All the controls and parameters will be first placed for the reproducability of the next models.The package choosed was the MLR.
+
+
+```{r controls}
+# Pacote
+library(mlr)
+set.seed(1994)
+
+# modelo padrão linear
+regr.lm <- makeLearner('regr.lm')
+
+# Criação do modelo simples
+xgb_model <- makeLearner("regr.xgboost")
+
+# Grid de alguns parâmetros
+xgb_params <- makeParamSet(
+  # The number of trees in the model (each one built sequentially)
+  makeIntegerParam("nrounds", lower = 100, upper = 500),
+  # number of splits in each tree
+  makeIntegerParam("max_depth", lower = 1, upper = 10),
+  # "shrinkage" - prevents overfitting
+  makeNumericParam("eta", lower = .1, upper = .5),
+  # L2 regularization - prevents overfitting
+  makeNumericParam("lambda", lower = -1, upper = 0, trafo = function(x) 10^x)
+)
+
+# Controle da tunagem randômica
+control <- makeTuneControlRandom(maxit = 3) # quantas iterações o modelo aleatório de seleção fará
+
+# Plano de resampling
+resample_desc <- makeResampleDesc("CV", iters = 5)
+
+```
+
+
+With all the controls defined, we can proceed to the hold out separation, model training and performance evaluation. The metrics used were rmse and rsq.
+
+```{r baseline}
+## Baseline
+
+# Criação do Task para Regressão (objeto usado nas operações do pacote)
+baseline_task <- makeRegrTask(id = 'Baseline', data = houses, target = 'price')
+
+# train test split (holdout é o método de resample de separar em train/test)
+holdout <- makeResampleInstance('Holdout', baseline_task)
+base_train <- subsetTask(baseline_task, holdout$train.inds[[1]])
+base_test <- subsetTask(baseline_task, holdout$test.inds[[1]])
+
+# treinamento modelo
+base_lm <- train(regr.lm, base_train)
+
+## XGBoost
+
+# tunador dos hiper parâmetros
+tuned_params_base <- tuneParams(
+  learner = xgb_model,
+  task = base_train,
+  resampling = resample_desc,
+  measures = rmse,       # R-Squared performance measure, this can be changed to one or many
+  par.set = xgb_params,
+  control = control
+)
+
+# Modelo tunado
+xgb_tuned_base <- setHyperPars(
+  learner = xgb_model,
+  par.vals = tuned_params_base$x
+)
+
+# Verificação da performance do modelo tunado usando as validações cruzadas usadas para tunagem
+resample(xgb_tuned_base,base_train,resample_desc,measures = list(rmse, rsq))
+
+# pela grande diferença entre as cvs, o modelo está com bastante overffiting
+
+# Treinamento
+base_XGBoost <- train(xgb_tuned_base, base_train)
+
+## Performance - Baseline
+
+# predição nos dados de teste
+base_pred_lm <- predict(base_lm, base_test)
+performance(base_pred_lm, measures = list(rmse, rsq))
+
+base_pred_xgb <- predict(base_XGBoost, base_test)
+performance(base_pred_xgb, measures = list(rmse, rsq))
+```
+
+
+## Stage 4 - Feature Engineering
+
+Trying to improve our model efficiency, we'll start some transformation on the variables to avoid overfitting and diminishing the rmse of the test data. With the latitude and longitude features, I'll use kmean clustering to improve the gain of information using a wss score validation. In the case of the categorical features, I'll agroup the low represented classes and use a one hot encoding approach to use them factors in the model. For last, I'll remove the near zero variance features.
+
+```{r FE}
+## Featrue Engineering
+
+## Features Geográficas
+geo <- houses %>% select(price, latitude, longitude)
+
+# Initialize total within sum of squares error: wss
+wss <- 0
+
+# For 1 to 15 cluster centers
+for (i in 1:15) {
+  km.out <- kmeans(geo %>% select(-c(price)), centers = i, nstart = 50)
+  # Save total within sum of squares to wss variable
+  wss[i] <- km.out$tot.withinss
+}
+
+# Plot total within sum of squares vs. number of clusters
+plot(1:15, wss, type = "b", 
+     xlab = "Number of Clusters", 
+     ylab = "Within groups sum of squares")
+
+# Set k equal to the number of clusters corresponding to the elbow location
+k_latLon <- 3
+km_geo <- kmeans(geo %>% select(-price), centers = k_latLon, nstart = 50)
+ggplot(geo, aes(latitude, longitude, col = as.factor(km_geo$cluster))) +
+  geom_point()
+ggplot(geo, aes(x = as.factor(km_geo$cluster), price)) +
+  geom_boxplot()
+
+latLon_cluster <- km_geo$cluster
+
+categoricalCoerc <- houses %>% 
+  select(c(num_bed, num_bath, num_floors, condition, renovation_date)) %>% 
+  mutate(num_bed_c = ifelse(num_bed < 3, 
+                            2, ifelse(num_bed > 4, 5, num_bed)),
+         num_bath_c = ifelse(num_bath < 1.5,
+                             1.25, ifelse(num_bath > 3.5, 3.75, num_bath)),
+         num_floors_c = ifelse(num_floors > 2, 2.5, num_floors),
+         condition_c = ifelse(condition < 3, 3, condition), 
+         renovation_date_c = ifelse(renovation_date == 0, 0, 1)) %>% 
+  select(-c(num_bed, num_bath, num_floors, condition, renovation_date))
+
+# is_waterfront - baixíssima variância e impacto muito razoável no preço
+summary(factor(houses$is_waterfront))
+
+# Sumarização das novas Features
+houses_nf <- cbind(houses, latLon_cluster, categoricalCoerc) %>% 
+  select(-c(latitude, longitude, num_bed, num_bath, num_floors, condition, renovation_date, is_waterfront))
+
+## One hot Encoding
+
+# factorização
+houses_fact <- houses_nf %>%
+  mutate_at(
+    .vars = vars('zip', 'latLon_cluster','num_bed_c', 'num_bath_c', 'num_floors_c', 'condition_c', 
+                 'renovation_date_c'),
+    .funs = funs(as.factor(.))
+  )
+
+# Sumarizando as colunas
+summarizeColumns(houses_fact) %>%
+  knitr::kable(digits = 2) # gerador de tabelas muito prático do knitr
+
+# Normalização
+houses_norm <- normalizeFeatures(houses_fact, target = "price")
+
+# One hot encoding
+houses_ohe <- createDummyFeatures(
+  houses_norm, target = "price",
+  cols = c(
+    'zip', 'latLon_cluster','num_bed_c', 'num_bath_c', 'num_floors_c', 'condition_c', 
+    'renovation_date_c'
+  )
+)
+```
+
+
+Now, I'll use this new dataset to evaluat the gain (or not) of performance. As we can see right next, incredibly, the model got worse when using the xgboost. Probably because of the capacity of interpreating non linear data, its boosting method, and the low amount of data, the generalization lead to a underfitting. At the end, we can see a plot of the most importante features for the determination of the predicted value on the best model (the first one).
+
+
+```{r FE model}
+## Feature engineering
+
+# Criação do Task para Regressão (objeto usado nas operações do pacote) FE
+fe_task <- makeRegrTask(id = 'Feature Engineering', data = houses_ohe, target = 'price')
+
+# Separação do hold out FE usando os mesmo índices usados no baseline
+fe_train <- subsetTask(fe_task, holdout$train.inds[[1]])
+fe_test <- subsetTask(fe_task, holdout$test.inds[[1]])
+
+# lm FE
+fe_lm <- train(regr.lm, fe_train)
+
+# tunador dos hiper parâmetros FE
+tuned_params_fe <- tuneParams(
+  learner = xgb_model,
+  task = fe_train,
+  resampling = resample_desc,
+  measures = rmse,       
+  par.set = xgb_params,
+  control = control
+)
+
+# Modelo tunado FE
+xgb_tuned_fe <- setHyperPars(
+  learner = xgb_model,
+  par.vals = tuned_params_fe$x
+)
+
+# Verificação da performance do modelo tunado usando as validações cruzadas usadas para tunagem
+resample(xgb_tuned_fe,fe_train,resample_desc,measures = list(rmse, rsq))
+
+# cvs bem mais similares, indicando uma generalização mais acurada
+
+# Treinamento
+fe_XGBoost <- train(xgb_tuned_fe, fe_train)
+
+## Performance - FE
+
+# predição nos dados de teste
+fe_pred_lm <- predict(fe_lm, fe_test)
+performance(fe_pred_lm, measures = list(rmse, rsq))
+
+fe_pred_xgb <- predict(fe_XGBoost, fe_test)
+performance(fe_pred_xgb, measures = list(rmse, rsq))
+```
+
+
+```{r Feature Importance}
+# Plotagem das features mais importantes
+library(iml)
+
+# usando Predictor$new() para criar um plot das features mais importantes
+X = getTaskData(base_test)[getTaskFeatureNames(base_test)]
+base_predictor = Predictor$new(base_XGBoost, data = X, y = getTaskData(base_test)['price'])
+base_imp = FeatureImp$new(base_predictor, loss = "rmse")
+plot(base_imp)
+```
+
+
+# END
