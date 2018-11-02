@@ -1,6 +1,6 @@
 # Projeto_R_04_GermanCreditRisk
 
-Projeto com o intuito de analisar os dados sobre precificação de casa, através de uma análise exploratória, criação de modelos preditivos de regressão básicos e mais avançados para analisar variações da performance à medida em que são alterados.
+Projeto com o intuito de analisar dados sobre precificação de casa, através de uma análise exploratória, criação de modelos preditivos de regressão básicos e mais avançados para analisar variações da performance à medida em que são alterados.
 
 # Instruções
 
