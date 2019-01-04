@@ -1,4 +1,4 @@
-# Project_R_04_GermanCreditRisk
+# Project_R_HousePricing
 
 The goal of this project is to investigate the features involved in the determination of the houses' prices and develop the best price modeling algorithm. I start it with a brief explanation about the data and next steps, head into the cleaning for further analysis in sequence, get first insights delivered by exploratory data analysis and steps of construction of a functional model.
 
