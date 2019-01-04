@@ -1,11 +1,11 @@
-# Projeto_R_04_GermanCreditRisk
+# Project_R_04_GermanCreditRisk
 
-Projeto com o intuito de analisar dados sobre precificação de casa, através de uma análise exploratória, criação de modelos preditivos de regressão básicos e mais avançados para analisar variações da performance à medida em que são alterados.
+The goal of this project is to investigate the features involved in the determination of the houses' prices and develop the best price modeling algorithm. I start it with a brief explanation about the data and next steps, head into the cleaning for further analysis in sequence, get first insights delivered by exploratory data analysis and steps of construction of a functional model.
 
-# Instruções
+# Instructions
 
-A análise foi feita em R, através do RStudio, com a utilização dos principais pacotes do conjunto Tidyverse. Vale ressaltar, também, o uso do MLR para as análises de aprendizado de máquina, juntamente a outros pacotes necessários por este como o XGBoost (checar documentação do pacote no GitHub).
+The analysis was made using R, trought the RStudio plataform, using the main packages of the Tidyverse suite. Also worth mentioning the MLR library for machine learning analysis, along with other packages needed by this one such as XGBoost (check package documentation in GitHub).
 
-# Orientações
+# Guidelines
 
-O trabalho possui 6 arquivos: os scripts usados para gerar os objetos e com anotações relevantes ao desenvolvimento e próximos passos e um Rmd com a estruturação do relatório, esse em si em formato html.
+The work has 6 files: the scripts used to generate the objects with annotations relevant to the development and next steps, jointly with a Rmd structuring the report, this itself in html format.
